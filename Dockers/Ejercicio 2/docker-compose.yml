@@ -1,0 +1,108 @@
+services:
+  namenode:
+    container_name: namenode
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    restart: always
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+
+  datanode:
+    container_name: datanode
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    restart: always
+    ports:
+      - 9864:9864
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+
+  resourcemanager:
+    container_name: resourcemanager
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    restart: always
+    ports:
+      - 8088:8088
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+      - datanode
+
+  nodemanager:
+    container_name: nodemanager
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    restart: always
+    ports:
+      - 8042:8042
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+
+  mysql:
+    container_name: mysql
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: metastore
+      MYSQL_USER: hive
+      MYSQL_PASSWORD: hive
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  hive-metastore:
+    container_name: hive-metastore
+    image: apache/hive:4.0.0-alpha-2
+    restart: always
+    environment:
+      DB_DRIVER: mysql
+      SERVICE_NAME: metastore
+      SERVICE_OPTS: "-Djavax.jdo.option.ConnectionDriverName=com.mysql.jdbc.Driver
+                    -Djavax.jdo.option.ConnectionURL=jdbc:mysql://mysql:3306/metastore
+                    -Djavax.jdo.option.ConnectionUserName=hive
+                    -Djavax.jdo.option.ConnectionPassword=hive"
+    ports:
+      - "9083:9083"
+    depends_on:
+      - mysql
+      - namenode
+      - datanode
+    command: /opt/hive/bin/start-metastore
+
+  hive-server2:
+    container_name: hive-server2
+    image: apache/hive:4.0.0-alpha-2
+    restart: always
+    environment:
+      HIVE_SERVER2_THRIFT_PORT: 10000
+      SERVICE_NAME: hiveserver2
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    depends_on:
+      - hive-metastore
+    command: /opt/hive/bin/start-hiveserver2
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  mysql_data:
